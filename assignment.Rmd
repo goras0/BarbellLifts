@@ -1,0 +1,163 @@
+---
+title: "Prediction Assignment Writeup"
+author: "Goran"
+date: "Monday, February 22, 2016"
+output: html_document
+---
+
+## Background
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. 
+They were asked to perform barbell lifts correctly and incorrectly in 5 different ways: 
+
+* exactly according to the specification (Class A)
+
+* throwing the elbows to the front (Class B)
+
+* lifting the dumbbell only halfway (Class C)
+
+* lowering the dumbbell only halfway (Class D)
+
+* throwing the hips to the front (Class E).
+
+More information is available from the website here: 
+http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset).
+
+## Data
+The training data for this project are available here:
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+
+The test data are available here:
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+The data for this project come from this source: 
+http://groupware.les.inf.puc-rio.br/har. 
+
+HAR Dataset for benchmarking
+We propose a dataset with 5 classes (sitting-down, standing-up, standing, walking, and sitting) collected on 8 hours of activities of 4 healthy subjects.
+
+## Getting Data
+Load the CSV files into R-studio. Mark missing values as NA.
+```{r}
+trainingData  <- read.csv("pml-training.csv", na.strings=c("NA","#DIV/0!",""))
+testingData <- read.csv("pml-testing.csv", na.strings=c("NA","#DIV/0!",""))
+```
+
+## Explore Data
+We see that the training dataset contains 19622 observations of 160 variables.
+We need to narrow or data set, to be able to build a good model. The first 7 columns are unrelated and can be removed from the dataset.
+
+```{r warning=FALSE}
+# loading libraries
+library(AppliedPredictiveModeling)
+library(ggplot2)
+library(lattice)
+library(caret)
+library(corrplot)
+library(randomForest)
+library(e1071)
+
+# setting the overall seed for reproduceability
+set.seed(4711)
+
+```
+
+
+```{r}
+dim(trainingData) 
+dim(testingData) 
+str(trainingData$classe)
+names(trainingData)
+summary(trainingData)[,1:10]
+
+# Remove the first 7 columns
+trainingData <- trainingData[,-seq(1:7)]
+testingData <- testingData[,-seq(1:7)]
+
+```
+
+
+## Cleaning Data
+There are several columns with missing values, we will remove them. After removing the missing values we have 53 variables.
+```{r}
+indexNA <- as.vector(sapply(trainingData[,1:152],function(x) {length(which(is.na(x)))!=0}))
+training <- trainingData[,!indexNA]
+testing <- testingData[,!indexNA]
+dim(training) 
+```
+
+Remove correlated variables.
+```{r removeCorrelated}
+corMatrix <- cor(training[,-dim(training)[2]],)
+corrplot(corMatrix, method = "color", type="lower", order="hclust", tl.cex = 0.75, tl.col="black", tl.srt = 45) 
+
+# Find variables with high correlation, and remove them
+correlation <- findCorrelation(corMatrix, cutoff = 0.5)
+training <- training[,-correlation]
+dim(training)
+
+corMatrix <- cor(training[,-dim(training)[2]],)
+corrplot(corMatrix, method = "color", type="lower", order="hclust", tl.cex = 0.75, tl.col="black", tl.srt = 45)
+
+# Do the same for the testing
+testing <- testing[,-correlation]
+dim(testing)
+
+```
+
+
+## Building the prediction model
+Create cross validation dataset
+```{r createDataPartition}
+
+# Partition data set between training and validation, for cross validation.
+inTrain <- createDataPartition(training$classe, p=0.7, list=FALSE)
+trainingPart <- training[inTrain, ]
+validationPart <- training[-inTrain, ]
+
+dim(trainingPart)
+dim(validationPart)
+
+```
+
+
+## Training prediction results
+The machine learning model is trained using a random forest. We build a model using the training set.
+```{r trainModel, cache=TRUE}
+
+modelFit <- train(classe ~., method = "rf", data=trainingPart, trControl=trainControl(method="cv"), importance=TRUE)
+print(modelFit)
+```
+
+## Cross Validation Testing
+Test model on training dataset
+```{r predictTrain}
+# results with training dataset
+predictTrain <- predict(modelFit, trainingPart)
+confusionMatrix(predictTrain,trainingPart$classe)
+
+```
+
+Test model on validation dataset.
+The accuracy shows the expected out of sample error expected.
+Accuracy: 0.98 gives the xpected out-of-sample error: 0.02 
+```{r predictValid}
+# results with validation dataset
+predictValid <- predict(modelFit,validationPart)
+confMatrix <- confusionMatrix(predictValid, validationPart$classe)
+confMatrix
+
+```
+
+
+## Test Prediction Results
+Predicting Performance on Testing Dataset. 
+```{r predictResult}
+# apply the model that we have to our test set, do we need to refine?
+predictTest <- predict(modelFit, newdata=testing)
+predictTest
+```
+
+
+## Summary
+In this report we have showed how a prediction model is built using machine learning. We have used the Random Forrest algorithm to build train our model. We have used a patition of the traningset for cross validation. The expected out of sample error did show the correct classified observation in the cross-validation dataset. Finally we have predicted the 20 different test cases with our prediction model.
+
